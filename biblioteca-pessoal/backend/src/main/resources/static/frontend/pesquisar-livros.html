@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pesquisar Livros</title>
+    <link rel="stylesheet" href="/frontend/css/style-pesquisar.css">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+</head>
+<body>
+<header>
+    <a href="pagina-principal.html">Meus Livros</a>
+    <a href="pesquisar-livros.html" class="active">Pesquisar Livros</a>
+</header>
+
+<!-- Barra de Pesquisa -->
+<!-- Barra de Pesquisa -->
+<form id="search-form" class="search-container">
+    <input type="text" class="search-input" placeholder="Pesquise um livro">
+    <button type="submit" class="search-btn">🔍</button>
+</form>
+
+<!-- Container de Resultados -->
+<div class="container">
+    <h2>Aqui estão os livros de acordo com sua pesquisa</h2>
+    <div class="book-grid" id="book-grid">
+        <!-- Resultados aparecem aqui -->
+    </div>
+</div>
+
+<script>
+    // Variáveis de Estado
+    let currentQuery = ""; // Última consulta feita
+    let currentPage = 0; // Página atual
+    let isLoading = false; // Evita chamadas múltiplas
+    let totalItems = null; // Total de itens retornados pela API
+
+    // Clique para pesquisar livros
+    document.querySelector(".search-btn").addEventListener("click", async (event) => {
+        event.preventDefault(); // Evita o comportamento padrão
+        const query = document.querySelector(".search-input").value.trim();
+        if (query) {
+            currentQuery = query; // Atualiza a consulta atual
+            currentPage = 0; // Reseta a página atual
+            await searchBooks(query); // Executa a pesquisa
+        }
+    });
+
+    // Função para adicionar o livro aos "Meus Livros"
+    async function addToMyBooks(book) {
+        const token = localStorage.getItem("jwtToken");
+        const userId = JSON.parse(atob(token.split(".")[1])).id; // Extrai o ID do usuário autenticado
+
+        const livro = {
+            googleBookId: book.id,
+            titulo: book.volumeInfo?.title || "Sem Título",
+            autor: book.volumeInfo?.authors ? book.volumeInfo.authors.join(", ") : "Autor Desconhecido",
+            imagemUrl: book.volumeInfo?.imageLinks?.thumbnail || "https://via.placeholder.com/150",
+            paginasTotais: book.volumeInfo?.pageCount || 0,
+        };
+
+        try {
+            const response = await fetch(`http://localhost:8080/api/livros/${userId}`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify(livro),
+            });
+
+            if (response.ok) {
+                alert(`"${livro.titulo}" foi adicionado à sua biblioteca!`);
+            } else {
+                console.error("Erro ao adicionar livro:", await response.text());
+                alert("Erro ao adicionar o livro.");
+            }
+        } catch (error) {
+            console.error("Erro ao conectar com o servidor:", error);
+            alert("Erro ao conectar ao servidor.");
+        }
+    }
+
+    // Função para criar um card de livro
+    function createBookCard(book) {
+        const title = book.volumeInfo?.title || "Título Desconhecido";
+        const author = book.volumeInfo?.authors ? book.volumeInfo.authors.join(", ") : "Autor Desconhecido";
+        const thumbnail = book.volumeInfo?.imageLinks?.thumbnail || "https://via.placeholder.com/150";
+        const totalPages = book.volumeInfo?.pageCount || "Não Informado";
+
+        return `
+            <div class="card fade-in">
+                <img src="${thumbnail}" alt="Imagem do Livro">
+                <div class="info">
+                    <h3>${title}</h3>
+                    <p><strong>${author}</strong></p>
+                    <p>Páginas: ${totalPages}</p>
+                </div>
+                <button class="add-btn" data-book='${JSON.stringify({
+                    id: book.id,
+                    title,
+                    author,
+                    thumbnail,
+                    totalPages,
+                })}'>Adicionar</button>
+            </div>
+        `;
+    }
+
+    // Função de pesquisa
+    async function searchBooks(query, startIndex = 0) {
+        const endpoint = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query)}&startIndex=${startIndex}&maxResults=10`;
+
+        try {
+            const response = await fetch(endpoint);
+            const data = await response.json();
+
+            const bookGrid = document.getElementById("book-grid");
+            if (startIndex === 0) {
+                bookGrid.innerHTML = "";
+            }
+
+            if (data.items && data.items.length > 0) {
+                totalItems = data.totalItems; // Atualiza o total de itens
+                data.items.forEach((book) => {
+                    bookGrid.insertAdjacentHTML("beforeend", createBookCard(book));
+                });
+            } else if (startIndex === 0) {
+                bookGrid.innerHTML = "<p>Nenhum livro encontrado.</p>";
+            }
+        } catch (error) {
+            console.error("Erro ao buscar livros:", error);
+            document.getElementById("book-grid").innerHTML = "<p>Erro ao carregar livros.</p>";
+        }
+    }
+
+    // Detecta o clique no botão "Adicionar"
+    document.addEventListener("click", (e) => {
+        if (e.target.classList.contains("add-btn")) {
+            const bookData = JSON.parse(e.target.getAttribute("data-book")); // Lê os dados do botão
+            console.log("Livro sendo enviado ao backend:", bookData);
+            addToMyBooks(bookData); // Chamada direta para o backend
+        }
+    });
+
+    // Detecta o final da página para carregar mais livros
+    window.addEventListener("scroll", () => {
+        if (
+            window.innerHeight + window.scrollY >= document.body.offsetHeight - 100 &&
+            !isLoading &&
+            currentQuery &&
+            currentPage * 10 < totalItems // Verifica se ainda há itens para carregar
+        ) {
+            currentPage += 10; // Incrementa o índice de página
+            searchBooks(currentQuery, currentPage);
+        }
+    });
+
+    // Carrega e aplica o tema salvo no localStorage
+    function loadTheme() {
+        const savedTheme = localStorage.getItem("theme");
+        if (savedTheme === "dark-mode") {
+            document.body.classList.add("dark-mode");
+        } else {
+            document.body.classList.remove("dark-mode");
+        }
+    }
+
+    // Aplica o tema ao carregar a página
+    loadTheme();
+</script>
+
+</body>
+</html>

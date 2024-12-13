@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Biblioteca</title>
+    <link rel="stylesheet" href="/frontend/css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="navbar">
+        <button id="toggle-theme" class="nav-btn">Alternar Tema</button>
+        <button id="add-book" class="nav-btn">Adicionar Livro</button>
+        <a href="pesquisar-livros.html">
+            <button class="nav-btn">Pesquisar Livros</button>
+        </a>
+    </div>
+    
+    <div id="add-book-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-btn">&times;</span>
+            <h2>Adicionar Novo Livro</h2>
+            <form id="add-book-form">
+                <div>
+                    <label for="book-title">Título</label>
+                    <input type="text" id="book-title" placeholder="Digite o título do livro" required>
+                </div>
+                <div>
+                    <label for="book-author">Autor</label>
+                    <input type="text" id="book-author" placeholder="Digite o autor" required>
+                </div>
+                <div>
+                    <label for="book-pages">Número de Páginas</label>
+                    <input type="number" id="book-pages" placeholder="Digite o número de páginas" min="1" required>
+                </div>
+                <div>
+                    <label for="book-image">Imagem do Livro</label>
+                    <input type="file" id="book-image" accept="image/*" required>
+                </div>
+                <div id="image-preview">
+                    <p>Pré-visualização da Imagem:</p>
+                    <img id="preview-img" src="" alt="Pré-visualização" style="display: none;">
+                </div>
+                <button type="submit" class="submit-btn">Cadastrar</button>
+            </form>
+        </div>
+    </div>
+    
+    
+
+    <div class="book-grid" id="book-grid">
+        <!-- Livros serão carregados dinamicamente aqui -->
+    </div>
+
+    <script>
+// Função para criar um card de livro
+function createBookCard({ id, title, author, totalPages, image, currentPage }) {
+    return `
+        <div class="book-card fade-in">
+            <div class="book-img">
+                <img src="${image}" alt="${title}">
+            </div>
+            <div class="book-info">
+                <h4>${title}</h4>
+                <p><strong>${author}</strong></p>
+                <p>Página atual: <span class="current-page">${currentPage}</span> / ${totalPages}</p>
+                <input type="number" class="page-input" placeholder="Nova página">
+                <div class="actions">
+                    <button class="update-btn" data-id="${id}">Atualizar Página</button>
+                    <button class="remove-btn" data-id="${id}">🗑️</button>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+async function loadSavedBooks() {
+    const booksContainer = document.getElementById('book-grid');
+    booksContainer.innerHTML = ''; // Limpa os livros existentes na interface
+
+    try {
+        // Recupera o token do localStorage
+        const token = localStorage.getItem('jwtToken');
+        if (!token) {
+            alert("Você precisa estar logado para visualizar seus livros.");
+            window.location.href = "login.html";
+            return;
+        }
+
+        // Decodifica o token JWT para obter o ID do usuário
+        const payloadBase64 = token.split('.')[1];
+        const decodedPayload = JSON.parse(atob(token.split('.')[1]));
+        const userId = decodedPayload.id; // Agora, pega o ID diretamente do token
+        console.log("User ID:", userId);
+
+        console.log("Token:", token);
+
+
+
+        // Faz uma chamada à API para buscar os livros do backend
+        const response = await fetch(`http://localhost:8080/api/livros/${userId}`, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json',
+            },
+        });
+
+        if (response.ok) {
+            const livros = await response.json();
+
+            livros.forEach((item) => {
+                const book = item.livro;
+
+                // Cria o elemento de livro dinamicamente
+                const bookCard = `
+                    <div class="book-card">
+                        <img src="${book.imagemUrl}" alt="${book.titulo}" class="book-cover">
+                        <div class="book-details">
+                            <h3>${book.titulo}</h3>
+                            <p>${book.autor}</p>
+                            <p>Páginas: ${item.paginaAtual} / ${book.paginasTotais}</p>
+                            <button class="update-page" data-id="${item.id}" data-pagina="${item.paginaAtual}">Atualizar Página</button>
+                            <button class="remove-book" data-id="${item.id}">Remover Livro</button>
+                        </div>
+                    </div>
+                `;
+                booksContainer.innerHTML += bookCard;
+            });
+
+            // Adiciona eventos nos botões de atualizar e remover
+            addEventListeners();
+        } else {
+            alert("Erro ao carregar os livros.");
+        }
+    } catch (error) {
+        console.error('Erro ao carregar livros:', error);
+        alert("Erro ao conectar com o servidor.");
+    }
+}
+
+
+function addEventListeners() {
+    // Evento para atualizar página atual
+    document.querySelectorAll('.update-page').forEach(button => {
+        button.addEventListener('click', async (event) => {
+            const livroId = event.target.getAttribute('data-id');
+            const novaPagina = prompt("Digite a nova página atual:");
+
+            if (novaPagina && !isNaN(novaPagina)) {
+                await updateBookPage(livroId, novaPagina);
+            } else {
+                alert("Número de página inválido.");
+            }
+        });
+    });
+
+    // Evento para remover livro
+    document.querySelectorAll('.remove-book').forEach(button => {
+        button.addEventListener('click', async (event) => {
+            const livroId = event.target.getAttribute('data-id');
+            if (confirm("Tem certeza que deseja remover este livro?")) {
+                await deleteBook(livroId);
+            }
+        });
+    });
+}
+
+async function updateBookPage(livroId, novaPagina) {
+    try {
+        console.log("Atualizando página do livro:", livroId, "Nova Página:", novaPagina); // Adicionado
+        const token = localStorage.getItem('jwtToken');
+        const response = await fetch(`http://localhost:8080/api/livros/${livroId}`, {
+            method: 'PUT',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ paginaAtual: novaPagina }),
+        });
+
+        if (response.ok) {
+            alert("Página atualizada com sucesso!");
+            loadSavedBooks(); // Recarrega os livros
+        } else {
+            console.error("Erro na resposta:", response.status, response.statusText);
+            alert("Erro ao atualizar a página.");
+        }
+    } catch (error) {
+        console.error('Erro ao atualizar página:', error);
+        alert("Erro ao conectar com o servidor.");
+    }
+}
+
+
+async function deleteBook(livroId) {
+    try {
+        const token = localStorage.getItem('jwtToken');
+        const response = await fetch(`http://localhost:8080/api/livros/${livroId}`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json',
+            },
+        });
+
+        if (response.ok) {
+            alert("Livro removido com sucesso!");
+            loadSavedBooks(); // Recarrega os livros
+        } else {
+            alert("Erro ao remover o livro.");
+        }
+    } catch (error) {
+        console.error('Erro ao remover livro:', error);
+        alert("Erro ao conectar com o servidor.");
+    }
+}
+
+// Alternar Tema
+const toggleThemeButton = document.getElementById('toggle-theme');
+
+function loadTheme() {
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme === 'dark-mode') {
+        document.body.classList.add('dark-mode');
+    } else {
+        document.body.classList.remove('dark-mode');
+    }
+}
+
+function toggleTheme() {
+    if (document.body.classList.contains('dark-mode')) {
+        document.body.classList.remove('dark-mode');
+        localStorage.setItem('theme', 'light-mode');
+    } else {
+        document.body.classList.add('dark-mode');
+        localStorage.setItem('theme', 'dark-mode');
+    }
+}
+
+toggleThemeButton.addEventListener('click', toggleTheme);
+// Referências de elementos
+const addBookButton = document.getElementById("add-book");
+const modal = document.getElementById("add-book-modal");
+const closeBtn = document.querySelector(".close-btn");
+const addBookForm = document.getElementById("add-book-form");
+const previewImg = document.getElementById("preview-img");
+const bookImageInput = document.getElementById("book-image");
+
+// Abrir o modal
+addBookButton.addEventListener("click", () => {
+    modal.style.display = "block";
+});
+
+// Fechar o modal
+closeBtn.addEventListener("click", () => {
+    modal.style.display = "none";
+});
+
+// Fechar o modal ao clicar fora
+window.addEventListener("click", (e) => {
+    if (e.target === modal) {
+        modal.style.display = "none";
+    }
+});
+
+// Pré-visualização de imagem
+bookImageInput.addEventListener("change", function () {
+    const file = this.files[0];
+    if (file) {
+        const reader = new FileReader();
+        reader.onload = function (e) {
+            previewImg.src = e.target.result;
+            previewImg.style.display = "block";
+        };
+        reader.readAsDataURL(file);
+    } else {
+        previewImg.src = "";
+        previewImg.style.display = "none";
+    }
+});
+
+// Cadastro de Livro
+addBookForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+
+    const title = document.getElementById("book-title").value;
+    const author = document.getElementById("book-author").value;
+    const pages = parseInt(document.getElementById("book-pages").value, 10);
+    const image = previewImg.src;
+
+    if (!image || !title || !author || pages <= 0) {
+        alert("Preencha todos os campos corretamente.");
+        return;
+    }
+
+    const newBook = {
+        id: Date.now().toString(),
+        title,
+        author,
+        totalPages: pages,
+        image,
+        currentPage: 1,
+    };
+
+    // Salva no LocalStorage
+    const savedBooks = JSON.parse(localStorage.getItem("savedBooks")) || [];
+    savedBooks.push(newBook);
+    localStorage.setItem("savedBooks", JSON.stringify(savedBooks));
+
+    // Atualiza a exibição
+    loadSavedBooks();
+
+    // Limpa e fecha o formulário
+    addBookForm.reset();
+    previewImg.src = "";
+    previewImg.style.display = "none";
+    modal.style.display = "none";
+
+    alert(`"${newBook.title}" foi adicionado com sucesso!`);
+});
+
+
+// Carregar os livros ao iniciar
+window.onload = () => {
+    loadTheme();
+    loadSavedBooks();
+};
+
+
+    </script>
+</body>
+</html>

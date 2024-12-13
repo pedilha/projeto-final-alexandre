@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Biblioteca Pessoal</title>
+    <link rel="stylesheet" type="text/css" href="/frontend/css/style-login.css">
+</head>
+<body>
+    <div class="login-container">
+        <h1>Login</h1>
+        <form id="login-form" class="active-form">
+            <input type="email" id="email" placeholder="Email" required />
+            <input type="password" id="senha" placeholder="Senha" required />
+            <button type="submit">Entrar</button>
+            <p id="show-register" class="link">Cadastrar</p>
+        </form>
+
+        <form id="register-form" class="hidden-form">
+            <h2>Cadastrar</h2>
+            <input type="text" id="nome" placeholder="Nome" required />
+            <input type="email" id="email-reg" placeholder="Email" required />
+            <input type="password" id="senha-reg" placeholder="Senha" required />
+            <button type="submit">Cadastrar</button>
+            <p id="show-login" class="link">Já possui uma conta?</p>
+        </form>
+    </div>
+
+    <script src="/frontend/js/api.js"></script>
+    <script src="/frontend/js/login.js"></script>
+</body>
+</html>
